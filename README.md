@@ -4,6 +4,15 @@ This is a new [**React Native**](https://reactnative.dev) project, bootstrapped 
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
 
+## Step 1: Setup Embrace Config
+
+```sh
+cp src/config/embrace.config.template.ts src/config/embrace.config.ts
+cp android/app/src/main/embrace-config.template.json android/app/src/main/embrace-config.json
+```
+
+Fill in the config files with valid Embrace app IDs and API tokens
+
 ## Step 1: Start Metro
 
 First, you will need to run **Metro**, the JavaScript build tool for React Native.
