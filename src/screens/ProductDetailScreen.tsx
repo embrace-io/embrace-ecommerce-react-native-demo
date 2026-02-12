@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,9 @@ import {
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
+
+import uuid from 'react-native-uuid';
+import {useEmbraceNativeTracerProvider} from "@embrace-io/react-native-tracer-provider";
 import {useRoute, RouteProp, useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {Product, ProductVariant} from '../models/Product';
@@ -16,6 +19,8 @@ import {embraceService} from '../services/embrace';
 import {useCartStore} from '../store/cartStore';
 import {Button, LoadingSpinner} from '../components';
 import {RootStackParamList} from '../navigation/types';
+import {Span} from "@opentelemetry/api";
+import {useFetchProductSubPart} from "../services/hooks.ts";
 
 type ProductDetailRouteProp = RouteProp<RootStackParamList, 'ProductDetail'>;
 type ProductDetailNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -23,23 +28,25 @@ type ProductDetailNavigationProp = NativeStackNavigationProp<RootStackParamList>
 const {width} = Dimensions.get('window');
 
 export const ProductDetailScreen: React.FC = () => {
+  const {tracer} = useEmbraceNativeTracerProvider({});
   const route = useRoute<ProductDetailRouteProp>();
   const navigation = useNavigation<ProductDetailNavigationProp>();
   const {productId} = route.params;
   const addItem = useCartStore(state => state.addItem);
 
+  const [perfSpan, setPerfSpan] = useState<Span | undefined>(undefined);
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
   const [quantity, setQuantity] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [addedToCart, setAddedToCart] = useState(false);
+  const loadId = useMemo(() => uuid.v4(), []);
+  const {isLoaded: isLoadedStock, data: stock} = useFetchProductSubPart<Pick<Product, 'inStock' | 'stockCount'>>(product, loadId, 'PDP-loading-stock', 500, 1500);
+  const {isLoaded: isLoadedImages, data: images} = useFetchProductSubPart<Pick<Product, 'imageUrls'>>(product, loadId, 'PDP-loading-images', 1000, 8000);
+  const [criticalComponentsLoaded, setCriticalComponentsLoaded] = useState(false);
 
-  useEffect(() => {
-    loadProduct();
-  }, [productId]);
-
-  const loadProduct = async () => {
+  const loadProduct = useCallback(async () => {
     try {
       embraceService.addBreadcrumb(`PRODUCT_DETAIL_LOAD_${productId}`);
       const data = await apiService.fetchProductById(productId);
@@ -80,7 +87,45 @@ export const ProductDetailScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [productId]);
+
+
+  useEffect(() => {
+    loadProduct();
+    if (!perfSpan) {
+      setPerfSpan(tracer?.startSpan("PDP-overall", {
+        attributes: {
+          loadId,
+          stockLoaded: false,
+          imagesLoaded: false,
+          productId,
+        }
+      }));
+    }
+
+   return () => {
+     // called when PDP page unmounts
+     if (!(criticalComponentsLoaded)) {
+       perfSpan?.setAttribute("emb.error_code", "user_abandon");
+       perfSpan?.end()
+     }
+    };
+  }, [criticalComponentsLoaded, loadId, loadProduct, perfSpan, productId, tracer]);
+
+  useEffect(() => {
+    if (isLoadedStock) {
+      perfSpan?.setAttribute('stockLoaded', true)
+    }
+
+    if (isLoadedImages) {
+      perfSpan?.setAttribute('imagesLoaded', true)
+    }
+
+    if (isLoadedImages && isLoadedStock) {
+      setCriticalComponentsLoaded(true);
+      perfSpan?.end()
+    }
+  }, [isLoadedStock, isLoadedImages, perfSpan]);
 
   const handleVariantSelect = (type: string, value: string) => {
     setSelectedVariants(prev => ({...prev, [type]: value}));
@@ -122,38 +167,44 @@ export const ProductDetailScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Image Carousel */}
-        <ScrollView
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={e => {
-            const index = Math.round(e.nativeEvent.contentOffset.x / width);
-            setCurrentImageIndex(index);
-          }}>
-          {product.imageUrls.map((url, index) => (
-            <Image
-              key={index}
-              source={{uri: url}}
-              style={styles.productImage}
-              resizeMode="cover"
-            />
-          ))}
-        </ScrollView>
 
-        {/* Image Indicators */}
-        {product.imageUrls.length > 1 && (
-          <View style={styles.indicators}>
-            {product.imageUrls.map((_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.indicator,
-                  index === currentImageIndex && styles.indicatorActive,
-                ]}
-              />
-            ))}
-          </View>
+        {isLoadedImages && images && (
+          <>
+            {/* Image Carousel */}
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={e => {
+                const index = Math.round(e.nativeEvent.contentOffset.x / width);
+                setCurrentImageIndex(index);
+              }}>
+
+              {images.imageUrls.map((url, index) => (
+                <Image
+                  key={index}
+                  source={{uri: url}}
+                  style={styles.productImage}
+                  resizeMode="cover"
+                />
+              ))}
+            </ScrollView>
+
+            {/* Image Indicators */}
+            {images.imageUrls.length > 1 && (
+              <View style={styles.indicators}>
+                {product.imageUrls.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.indicator,
+                      index === currentImageIndex && styles.indicatorActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+          </>
         )}
 
         {/* Product Info */}
@@ -163,19 +214,21 @@ export const ProductDetailScreen: React.FC = () => {
           <Text style={styles.price}>${product.price.toFixed(2)}</Text>
 
           {/* Stock Status */}
-          <View style={styles.stockContainer}>
-            <View
-              style={[
-                styles.stockBadge,
-                product.inStock ? styles.inStock : styles.outOfStock,
-              ]}>
-              <Text style={styles.stockText}>
-                {product.inStock
-                  ? `In Stock (${product.stockCount})`
-                  : 'Out of Stock'}
-              </Text>
+          {isLoadedStock && stock && (
+            <View style={styles.stockContainer}>
+              <View
+                style={[
+                  styles.stockBadge,
+                  stock.inStock ? styles.inStock : styles.outOfStock,
+                ]}>
+                <Text style={styles.stockText}>
+                  {stock.inStock
+                    ? `In Stock (${stock.stockCount})`
+                    : 'Out of Stock'}
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
 
           {/* Description */}
           <Text style={styles.sectionTitle}>Description</Text>
@@ -238,13 +291,13 @@ export const ProductDetailScreen: React.FC = () => {
       <View style={styles.bottomBar}>
         {addedToCart ? (
           <Button title="Go to Cart" onPress={handleGoToCart} />
-        ) : (
+        ) : (isLoadedStock && stock && (
           <Button
-            title={product.inStock ? 'Add to Cart' : 'Out of Stock'}
+            title={stock.inStock ? 'Add to Cart' : 'Out of Stock'}
             onPress={handleAddToCart}
-            disabled={!product.inStock}
+            disabled={!stock.inStock}
           />
-        )}
+        ))}
       </View>
     </View>
   );
