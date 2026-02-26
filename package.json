@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@apollo/client": "^4.1.6",
     "@embrace-io/react-native": "file:../embrace-react-native-sdk/packages/core",
     "@embrace-io/react-native-tracer-provider": "file:../embrace-react-native-sdk/packages/react-native-tracer-provider",
     "@opentelemetry/api": "^1.9.0",
@@ -18,6 +19,7 @@
     "@react-navigation/bottom-tabs": "^7.8.12",
     "@react-navigation/native": "^7.1.25",
     "@react-navigation/native-stack": "^7.8.6",
+    "graphql": "^16.13.0",
     "react": "19.2.0",
     "react-native": "0.83.0",
     "react-native-safe-area-context": "^5.6.2",

@@ -5,6 +5,7 @@ export type TabParamList = {
   Search: undefined;
   Cart: undefined;
   Profile: undefined;
+  GraphQLTest: undefined;
 };
 
 export type RootStackParamList = {

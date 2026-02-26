@@ -1,7 +1,7 @@
 import React from 'react';
 import {View, Text, StyleSheet} from 'react-native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
-import {HomeScreen, SearchScreen, CartScreen, ProfileScreen} from '../screens';
+import {HomeScreen, SearchScreen, CartScreen, ProfileScreen, GraphQLTestScreen} from '../screens';
 import {useCartStore} from '../store/cartStore';
 import {TabParamList} from './types';
 
@@ -13,6 +13,7 @@ const TabIcon: React.FC<{name: string; focused: boolean}> = ({name, focused}) =>
     Search: '🔍',
     Cart: '🛒',
     Profile: '👤',
+    GraphQLTest: '🔗',
   };
 
   return (
@@ -77,6 +78,17 @@ export const TabNavigator: React.FC = () => {
         component={ProfileScreen}
         options={{
           tabBarIcon: ({focused}) => <TabIcon name="Profile" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
+        name="GraphQLTest"
+        component={GraphQLTestScreen}
+        options={{
+          tabBarLabel: 'GraphQL',
+          tabBarIcon: ({focused}) => (
+            <TabIcon name="GraphQLTest" focused={focused} />
+          ),
+          headerTitle: 'GraphQL Test',
         }}
       />
     </Tab.Navigator>

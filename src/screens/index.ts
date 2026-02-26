@@ -6,3 +6,4 @@ export {CartScreen} from './CartScreen';
 export {CheckoutScreen} from './CheckoutScreen';
 export {ProfileScreen} from './ProfileScreen';
 export {AuthScreen} from './AuthScreen';
+export {GraphQLTestScreen} from './GraphQLTestScreen';
